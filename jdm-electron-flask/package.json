@@ -1,0 +1,39 @@
+{
+    "name": "jdm-electron-flask",
+    "type": "module",
+    "version": "1.0.11",
+    "description": "JDM Electron + Flask plugin for jdm-cli",
+    "bin": {
+        "jdm-electron-flask": "bin/guard.js"
+    },
+    "main": "./lib/index.js",
+    "scripts": {
+        "test": "echo \"No tests yet\""
+    },
+    "dependencies": {
+        "chalk": "^5.3.0",
+        "ora": "^9.4.0",
+        "string-width": "^8.2.0",
+        "strip-ansi": "^7.2.0"
+    },
+    "keywords": [
+        "jdm",
+        "electron",
+        "flask",
+        "plugin"
+    ],
+    "author": "JDM-Github",
+    "license": "MIT",
+    "jdmPlugin": {
+        "namespace": "electron-flask",
+        "description": "Electron + Flask + React project manager",
+        "commands": [
+            "create",
+            "clean",
+            "compile",
+            "dev",
+            "prod",
+            "toexe"
+        ]
+    }
+}
