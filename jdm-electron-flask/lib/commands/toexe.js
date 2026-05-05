@@ -1,11 +1,26 @@
-// ─────────────────────────────────────────────────────────────
-//  toexe.js  —  jdm-cli electron-flask toexe
-//  Build backend Python app into a standalone EXE via PyInstaller.
-//  Targets cwd as project root.
-// ─────────────────────────────────────────────────────────────
 import fs from "fs";
 import path from "path";
 import { execSync } from "child_process";
+import { checkCompat } from "../config.js";
+
+let logPath = null;
+
+function initLog(targetDir) {
+    logPath = path.join(targetDir, "toexe.log");
+    fs.writeFileSync(logPath, `[jdm-cli toexe log — ${new Date().toISOString()}]\n\n`, "utf8");
+}
+
+function appendLog(lines) {
+    if (!logPath) return;
+    fs.appendFileSync(logPath, lines + "\n", "utf8");
+}
+
+function cleanLog() {
+    if (logPath && fs.existsSync(logPath)) {
+        fs.unlinkSync(logPath);
+        logPath = null;
+    }
+}
 
 function header(chalk) {
     console.log();
@@ -26,14 +41,31 @@ function step(chalk, n, total, label) {
 
 function ok(chalk, msg) { console.log(chalk.green("  ✔  ") + msg); }
 function fail(chalk, msg) { console.log(chalk.red("  ✖  ") + msg); }
+function info(chalk, msg) { console.log(chalk.gray("  ·  ") + msg); }
 
-export default async function toexe(chalk) {
+function exec(cmd, opts = {}) {
+    try {
+        const result = execSync(cmd, { ...opts, stdio: "pipe" });
+        if (result) appendLog(`[OK] ${cmd}\n${result.toString()}`);
+        return result;
+    } catch (err) {
+        const output = [
+            `[FAIL] ${cmd}`,
+            err.stdout?.toString() || "",
+            err.stderr?.toString() || "",
+        ].join("\n");
+        appendLog(output);
+        throw err;
+    }
+}
+
+export default async function toexe(chalk, args = [], rl) {
     header(chalk);
+    if (!checkCompat(chalk, "toexe")) return;
 
     const root = process.cwd();
     const backendDir = path.join(root, "backend");
 
-    // ── Step 1: clean ──────────────────────────────────────────
     step(chalk, 1, 3, "Cleaning previous build artifacts");
     const cleanTargets = [
         path.join(backendDir, "build"),
@@ -47,48 +79,59 @@ export default async function toexe(chalk) {
         }
     }
 
-    // ── Step 2: validate backend ───────────────────────────────
     step(chalk, 2, 3, "Validating backend directory");
-
     if (!fs.existsSync(backendDir)) {
         fail(chalk, `backend/ not found at: ${chalk.cyan(root)}`);
-        process.exit(1);
+        return;
     }
 
     const entryFile = path.join(backendDir, "production_run.py");
     if (!fs.existsSync(entryFile)) {
         fail(chalk, "production_run.py not found in backend/");
-        process.exit(1);
+        return;
     }
-
     ok(chalk, "backend/ validated");
 
-    // ── Step 3: PyInstaller ────────────────────────────────────
     step(chalk, 3, 3, "Building EXE with PyInstaller");
+    initLog(root);
+    appendLog("=== PyInstaller build ===");
 
-    const cmd = [
+    const cmdParts = [
         "pyinstaller",
         "--onefile",
         "--noconsole",
         "--name flask_server",
-        "--add-data \"app;app\"",
-        "--add-data \"static;static\"",
-        "--add-data \".env;.\"",
-        "production_run.py",
-    ].join(" ");
+        "production_run.py"
+    ];
 
-    try {
-        execSync(cmd, {
-            cwd: backendDir,
-            env: { ...process.env, FLASK_ENV: "production" },
-            stdio: "inherit",
-        });
-        ok(chalk, "EXE built: " + chalk.cyan("backend/dist/flask_server.exe"));
-    } catch {
-        fail(chalk, "PyInstaller failed. Check output above.");
-        process.exit(1);
+    const possibleData = [
+        ["app", "app"],
+        ["static", "static"],
+        ["resources", "resources"],
+        [".env", "."]
+    ];
+
+    for (const [src, dst] of possibleData) {
+        const fullSrc = path.join(backendDir, src);
+        if (fs.existsSync(fullSrc)) {
+            cmdParts.splice(-1, 0, `--add-data "${src};${dst}"`);
+            info(chalk, `Including ${chalk.yellow(src)} → ${dst}`);
+        } else {
+            info(chalk, `Skipping missing: ${chalk.gray(src)}`);
+        }
     }
 
+    const cmd = cmdParts.join(" ");
+    try {
+        exec(cmd, { cwd: backendDir, env: { ...process.env, FLASK_ENV: "production" } });
+        ok(chalk, `EXE built: ${chalk.cyan(path.join(backendDir, "dist", "flask_server.exe"))}`);
+    } catch {
+        fail(chalk, "PyInstaller failed – check toexe.log for details");
+        console.log(chalk.yellow("\n    Full output written to: ") + chalk.white("toexe.log\n"));
+        return;
+    }
+
+    cleanLog();
     console.log("\n" + chalk.magenta("─".repeat(45)));
     console.log(chalk.green.bold("  ✔  toexe complete!"));
     console.log(chalk.magenta("─".repeat(45)) + "\n");

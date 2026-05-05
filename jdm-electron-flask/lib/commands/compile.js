@@ -1,14 +1,8 @@
-// ─────────────────────────────────────────────────────────────
-//  compile.js  —  jdm-cli electron-flask compile
-//  Full compile: frontend → backend EXE → electron dist
-//  Targets cwd as project root.
-// ─────────────────────────────────────────────────────────────
 import fs from "fs";
 import path from "path";
 import { execSync } from "child_process";
 import toexe from "./toexe.js";
-
-// ── logging ──────────────────────────────────────────────────
+import { checkCompat } from "../config.js";
 
 let logPath = null;
 
@@ -28,8 +22,6 @@ function cleanLog() {
         logPath = null;
     }
 }
-
-// ── helpers ──────────────────────────────────────────────────
 
 function header(chalk) {
     console.log();
@@ -51,8 +43,7 @@ function step(chalk, n, total, label) {
 function ok(chalk, msg) { console.log(chalk.green("  ✔  ") + msg); }
 function fail(chalk, msg) { console.log(chalk.red("  ✖  ") + msg); }
 function info(chalk, msg) { console.log(chalk.gray("  ·  ") + msg); }
-
-// ── silent exec with log ──────────────────────────────────────
+function warn(chalk, msg) { console.log(chalk.yellow("  ⚠  ") + msg); }
 
 function exec(cmd, opts = {}) {
     try {
@@ -70,8 +61,22 @@ function exec(cmd, opts = {}) {
     }
 }
 
-export default async function compile(chalk) {
+function ask(rl, question) {
+    return new Promise((resolve) => rl.question(question, resolve));
+}
+
+function findBuildOutput(electronDir) {
+    const candidates = ["dist", "release", "out"];
+    for (const candidate of candidates) {
+        const fullPath = path.join(electronDir, candidate);
+        if (fs.existsSync(fullPath)) return fullPath;
+    }
+    return null;
+}
+
+export default async function compile(chalk, args = [], rl) {
     header(chalk);
+    if (!checkCompat(chalk, "compile")) return;
 
     const root = process.cwd();
     const frontendDir = path.join(root, "frontend");
@@ -80,14 +85,12 @@ export default async function compile(chalk) {
 
     initLog(root);
 
-    // ── Step 1: frontend build ─────────────────────────────────
+    // Step 1: Frontend build
     step(chalk, 1, 4, "Building Frontend (deployed mode)");
-
     if (!fs.existsSync(frontendDir)) {
         fail(chalk, "frontend/ folder not found");
-        process.exit(1);
+        return;
     }
-
     appendLog("\n=== frontend ===");
     info(chalk, "npm install...");
     try {
@@ -101,41 +104,36 @@ export default async function compile(chalk) {
     } catch (err) {
         fail(chalk, "Frontend build failed");
         console.log(chalk.yellow("\n    Full output written to: ") + chalk.white("compile.log\n"));
-        process.exit(1);
+        return;
     }
 
-    // ── Step 2: backend EXE ────────────────────────────────────
+    // Step 2: Backend EXE
     step(chalk, 2, 4, "Building Backend EXE");
     appendLog("\n=== backend EXE ===");
     await toexe(chalk);
 
-    // ── Step 3: move EXE to electron/resources ─────────────────
+    // Step 3: Move EXE to electron/resources
     step(chalk, 3, 4, "Moving EXE → electron/resources/backend");
-
     const src = path.join(backendDir, "dist", "flask_server.exe");
     const destDir = path.join(electronDir, "resources", "backend");
     const dest = path.join(destDir, "flask_server.exe");
-
     if (!fs.existsSync(src)) {
         fail(chalk, "flask_server.exe not found in backend/dist/");
         console.log(chalk.yellow("\n    Full output written to: ") + chalk.white("compile.log\n"));
-        process.exit(1);
+        return;
     }
-
     fs.mkdirSync(destDir, { recursive: true });
     fs.copyFileSync(src, dest);
     appendLog(`[OK] Copied ${src} → ${dest}`);
     ok(chalk, "EXE copied to " + chalk.cyan("electron/resources/backend/"));
 
-    // ── Step 4: electron dist ──────────────────────────────────
+    // Step 4: Build Electron app
     step(chalk, 4, 4, "Building Electron App");
-
     if (!fs.existsSync(electronDir)) {
         fail(chalk, "electron/ folder not found");
         console.log(chalk.yellow("\n    Full output written to: ") + chalk.white("compile.log\n"));
-        process.exit(1);
+        return;
     }
-
     appendLog("\n=== electron ===");
     info(chalk, "npm install...");
     try {
@@ -146,12 +144,45 @@ export default async function compile(chalk) {
     } catch (err) {
         fail(chalk, "Electron build failed");
         console.log(chalk.yellow("\n    Full output written to: ") + chalk.white("compile.log\n"));
-        process.exit(1);
+        return;
     }
 
-    // ── Done ──────────────────────────────────────────────────
-    cleanLog();
+    const outputsDir = path.join(electronDir, "outputs");
+    const pkgJsonPath = path.join(electronDir, "package.json");
+    if (!fs.existsSync(pkgJsonPath)) {
+        warn(chalk, "electron/package.json not found – cannot determine version");
+    } else {
+        const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, "utf8"));
+        const version = pkg.version || "unknown";
+        const versionDir = path.join(outputsDir, version);
 
+        const buildOutput = findBuildOutput(electronDir);
+        if (!buildOutput) {
+            warn(chalk, "Could not find electron build output folder (dist, release, out) – skipping move");
+        } else {
+            fs.mkdirSync(outputsDir, { recursive: true });
+            let proceed = true;
+            if (fs.existsSync(versionDir)) {
+                console.log();
+                warn(chalk, `Output folder for version ${chalk.cyan(version)} already exists.`);
+                const answer = await ask(rl, chalk.white("  Overwrite existing folder? (y/N): "));
+                if (answer.trim().toLowerCase() !== "y") {
+                    proceed = false;
+                    warn(chalk, `Skipped moving build output for version ${version}`);
+                } else {
+                    fs.rmSync(versionDir, { recursive: true, force: true });
+                    info(chalk, `Removed existing ${versionDir}`);
+                }
+            }
+            if (proceed) {
+                fs.renameSync(buildOutput, versionDir);
+                appendLog(`[OK] Moved ${buildOutput} → ${versionDir}`);
+                ok(chalk, `Build output moved to ${chalk.cyan(`outputs/${version}`)}`);
+            }
+        }
+    }
+
+    cleanLog();
     console.log("\n" + chalk.blue("─".repeat(45)));
     console.log(chalk.green.bold("  ✔  Full compile complete!"));
     console.log(chalk.blue("─".repeat(45)) + "\n");

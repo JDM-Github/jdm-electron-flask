@@ -21,8 +21,30 @@ export const commands = {
     install
 };
 
-export async function run(command, args, chalk) {
+export async function run(command, args, chalk, rl) {
+    if (command === "help" || command === "--help" || command === "-h") {
+        return showDesign(chalk);
+    }
     const fn = commands[command];
-    if (!fn) throw new Error(`Unknown command: ${command}`);
+    if (!fn) {
+        console.log(chalk.red(`\n  ✖  Unknown command: "${command}"`));
+        console.log(chalk.gray(`     Available commands: ${Object.keys(commands).join(", ")}`));
+        return;
+    }
+    if (["create"].includes(command)) {
+        return fn(chalk, rl, args);
+    }
     return fn(chalk, args);
+}
+
+export async function showDesign(chalk) {
+    console.log(chalk.cyan("\n  ⚡ Electron-Flask Plugin"));
+    console.log(chalk.gray("     Create full-stack apps with:"), chalk.white("Electron + Flask + React"));
+    console.log(chalk.gray("     Available commands:\n"));
+    console.log(`  ${chalk.green("create")}    ${chalk.dim("Scaffold a new project")}`);
+    console.log(`  ${chalk.green("dev")}       ${chalk.dim("Start dev servers")}`);
+    console.log(`  ${chalk.green("prod")}      ${chalk.dim("Build for production")}`);
+    console.log(`  ${chalk.green("toexe")}     ${chalk.dim("Package as executable")}`);
+    console.log(`  ${chalk.green("clean")}     ${chalk.dim("Clean build artifacts")}`);
+    console.log(`  ${chalk.green("install")}   ${chalk.dim("Install dependencies")}\n`);
 }

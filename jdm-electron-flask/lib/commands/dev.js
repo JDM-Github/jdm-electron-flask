@@ -1,13 +1,7 @@
-// ─────────────────────────────────────────────────────────────
-//  dev.js  —  jdm-cli electron-flask dev
-//  Start dev environment: backend (new window) + frontend (current)
-//  Targets cwd as project root.
-// ─────────────────────────────────────────────────────────────
 import fs from "fs";
 import path from "path";
 import { spawn } from "child_process";
-
-// ── helpers ──────────────────────────────────────────────────
+import { checkCompat } from "../config.js";
 
 function header(chalk) {
     console.log();
@@ -20,10 +14,61 @@ function ok(chalk, msg) { console.log(chalk.green("    ✔  ") + msg); }
 function fail(chalk, msg) { console.log(chalk.red("    ✖  ") + msg); }
 function info(chalk, msg) { console.log(chalk.gray("    ·  ") + msg); }
 
-// ── main ─────────────────────────────────────────────────────
+function launchInWindowsTerminal(title, cwd, command, args) {
+    const fullCmd = `cd /d ${cwd} && ${command} ${args.join(" ")}`;
+    const proc = spawn("wt.exe", [
+        "-w", "0",
+        "new-tab", "--title", title,
+        "--",
+        "cmd.exe", "/k", fullCmd
+    ], {
+        detached: true,
+        stdio: "ignore",
+        shell: false,
+    });
+    proc.unref();
+}
+
+function launchInCmdWindow(cwd, command, args) {
+    const fullCmd = `cd /d ${cwd} && ${command} ${args.join(" ")}`;
+    const proc = spawn("cmd.exe", [
+        "/c", "start", "cmd.exe", "/k", fullCmd
+    ], {
+        detached: true,
+        stdio: "ignore",
+        shell: false,
+    });
+    proc.unref();
+}
+
+function launchInUnixTerminal(title, cwd, command, args) {
+    const fullCmd = `cd "${cwd}" && ${command} ${args.join(" ")}; exec $SHELL`;
+    const terminals = [
+        ["gnome-terminal", ["--title", title, "--", "bash", "-c", fullCmd]],
+        ["xterm", ["-title", title, "-e", `bash -c '${fullCmd}'`]],
+        ["osascript", ["-e", `tell application "Terminal" to do script "cd \\"${cwd}\\" && ${command} ${args.join(" ")}"`]],
+    ];
+    for (const [term, termArgs] of terminals) {
+        try {
+            spawn(term, termArgs, { detached: true, stdio: "ignore" }).unref();
+            return true;
+        } catch { /* try next */ }
+    }
+    return false;
+}
+
+function tryLaunchInWindowsTerminal(title, cwd, command, args) {
+    try {
+        launchInWindowsTerminal(title, cwd, command, args);
+        return true;
+    } catch {
+        return false;
+    }
+}
 
 export default async function dev(chalk) {
     header(chalk);
+    if (!checkCompat(chalk, "dev")) return;
 
     const root = process.cwd();
     const backendDir = path.join(root, "backend");
@@ -31,74 +76,80 @@ export default async function dev(chalk) {
 
     if (!fs.existsSync(backendDir)) {
         fail(chalk, `backend/ not found in ${chalk.cyan(root)}`);
-        process.exit(1);
     }
     if (!fs.existsSync(frontendDir)) {
         fail(chalk, `frontend/ not found in ${chalk.cyan(root)}`);
-        process.exit(1);
     }
-
-    // ── Backend: new terminal window ──────────────────────────
-    info(chalk, "Launching backend in a new terminal window...");
 
     const isWin = process.platform === "win32";
+    const useWinTerminal = isWin;
 
-    if (isWin) {
-        const command = `cd /d ${backendDir} && set FLASK_ENV=development && python run.py`;
-        spawn("cmd.exe", [
-            "/c",
-            "start",
-            "cmd.exe",
-            "/k",
-            command
-        ], {
-            detached: true,
-            stdio: "ignore",
-            shell: false,
-        }).unref();
-    } else {
-        const terminals = [
-            ["gnome-terminal", ["--", "bash", "-c", `cd "${backendDir}" && FLASK_ENV=development python run.py; exec bash`]],
-            ["xterm", ["-e", `bash -c 'cd "${backendDir}" && FLASK_ENV=development python run.py; exec bash'`]],
-            ["osascript", ["-e", `tell application "Terminal" to do script "cd \\"${backendDir}\\" && FLASK_ENV=development python run.py"`]],
-        ];
-        let launched = false;
-        for (const [term, args] of terminals) {
-            try {
-                spawn(term, args, { detached: true, stdio: "ignore" }).unref();
-                launched = true;
-                break;
-            } catch { /* try next */ }
+    info(chalk, "Launching development environment...");
+    console.log();
+
+    if (useWinTerminal) {
+        info(chalk, "Opening backend in Windows Terminal tab...");
+        const launched = tryLaunchInWindowsTerminal(
+            "Electron-Flask Backend", backendDir, "python", ["run.py"]
+        );
+        if (launched) {
+            ok(chalk, "Backend launched in a new tab");
+        } else {
+            info(chalk, "wt.exe unavailable — falling back to new CMD window...");
+            launchInCmdWindow(backendDir, "python", ["run.py"]);
+            ok(chalk, "Backend launched in a new window");
         }
-        if (!launched) {
-            fail(chalk, "Could not open a terminal. Run backend manually:");
-            console.log(chalk.gray(`      cd "${backendDir}" && FLASK_ENV=development python run.py`));
+    } else if (isWin) {
+        info(chalk, "Opening backend in a new CMD window...");
+        launchInCmdWindow(backendDir, "python", ["run.py"]);
+        ok(chalk, "Backend launched in a new window");
+    } else {
+        info(chalk, "Opening backend in a new terminal...");
+        const success = launchInUnixTerminal(
+            "Electron-Flask Backend", backendDir, "python3", ["run.py"]
+        );
+        if (!success) {
+            fail(chalk, "Could not open terminal. Run backend manually:");
+            console.log(chalk.gray(`      cd "${backendDir}" && python3 run.py`));
+        } else {
+            ok(chalk, "Backend launched in a new terminal");
         }
     }
 
-    ok(chalk, "Backend launched  " + chalk.gray("(new window · development mode)"));
+    if (useWinTerminal) {
+        info(chalk, "Opening frontend in Windows Terminal tab...");
+        const launched = tryLaunchInWindowsTerminal(
+            "Electron-Flask Frontend", frontendDir, "npm", ["run", "dev"]
+        );
+        if (launched) {
+            ok(chalk, "Frontend launched in a new tab");
+        } else {
+            info(chalk, "wt.exe unavailable — falling back to new CMD window...");
+            launchInCmdWindow(frontendDir, "npm", ["run", "dev"]);
+            ok(chalk, "Frontend launched in a new window");
+        }
+    } else if (isWin) {
+        info(chalk, "Opening frontend in a new CMD window...");
+        launchInCmdWindow(frontendDir, "npm", ["run", "dev"]);
+        ok(chalk, "Frontend launched in a new window");
+    } else {
+        info(chalk, "Opening frontend in a new terminal...");
+        const success = launchInUnixTerminal(
+            "Electron-Flask Frontend", frontendDir, "npm", ["run", "dev"]
+        );
+        if (!success) {
+            fail(chalk, "Could not open terminal. Run frontend manually:");
+            console.log(chalk.gray(`      cd "${frontendDir}" && npm run dev`));
+        } else {
+            ok(chalk, "Frontend launched in a new terminal");
+        }
+    }
 
-    // ── Frontend: current terminal ────────────────────────────
-    console.log();
-    info(chalk, "Starting frontend...");
     console.log();
     console.log(chalk.gray("  ─────────────────────────────────────"));
+    console.log(chalk.green("    ✔  Dev environment started!"));
+    console.log(chalk.gray("    Both servers are running in separate terminals / tabs."));
+    console.log(chalk.gray("    You can close this command window safely."));
+    console.log(chalk.gray("  ─────────────────────────────────────"));
     console.log();
-
-    const frontend = spawn("npm", ["run", "dev"], {
-        cwd: frontendDir,
-        env: { ...process.env, VITE_MODE: "development" },
-        stdio: "inherit",
-        shell: isWin,
-    });
-
-    frontend.on("close", (code) => {
-        console.log();
-        if (code === 0 || code === null) {
-            console.log(chalk.gray("    ·  Frontend stopped."));
-        } else {
-            console.log(chalk.red(`    ✖  Frontend exited with code ${code}`));
-        }
-        console.log();
-    });
 }

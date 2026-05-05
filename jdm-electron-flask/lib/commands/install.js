@@ -1,16 +1,8 @@
-// ─────────────────────────────────────────────────────────────
-//  install.js  —  jdm-cli electron-flask install
-//  Installs dependencies (npm/pip) for an existing project.
-//  Expects folders: backend/, frontend/, electron/ in current dir.
-// ─────────────────────────────────────────────────────────────
 import fs from "fs";
 import path from "path";
 import { execSync } from "child_process";
 
-// ── logging ──────────────────────────────────────────────────
-
 let logPath = null;
-
 function initLog(targetDir) {
     logPath = path.join(targetDir, "install.log");
     fs.writeFileSync(logPath, `[jdm-cli install log — ${new Date().toISOString()}]\n\n`, "utf8");
@@ -27,8 +19,6 @@ function cleanLog() {
         logPath = null;
     }
 }
-
-// ── helpers ──────────────────────────────────────────────────
 
 function header(chalk) {
     console.log();
@@ -47,8 +37,6 @@ function ok(chalk, msg) { console.log(chalk.green("    ✔  ") + msg); }
 function fail(chalk, msg) { console.log(chalk.red("    ✖  ") + msg); }
 function info(chalk, msg) { console.log(chalk.gray("    ·  ") + msg); }
 
-// ── silent exec with log ──────────────────────────────────────
-
 function exec(cmd, opts = {}) {
     try {
         const result = execSync(cmd, { ...opts, stdio: "pipe" });
@@ -65,9 +53,7 @@ function exec(cmd, opts = {}) {
     }
 }
 
-// ── main ─────────────────────────────────────────────────────
-
-export default async function install(chalk) {
+export default async function install(chalk, args = [], rl) {
     header(chalk);
 
     const root = process.cwd();
@@ -85,12 +71,11 @@ export default async function install(chalk) {
     if (missing.length > 0) {
         fail(chalk, `Missing folders: ${missing.map((m) => chalk.cyan(m)).join(", ")}`);
         console.log(chalk.gray("    Run this command from the root of an electron-flask project."));
-        process.exit(1);
+        return;
     }
 
     initLog(root);
 
-    // ── Backend ───────────────────────────────────────────────
     const req = path.join(dirs.backend, "requirements.txt");
     if (fs.existsSync(req)) {
         info(chalk, "Installing Python dependencies...");
@@ -101,13 +86,12 @@ export default async function install(chalk) {
         } catch (err) {
             fail(chalk, `Backend install failed: ${err.message}`);
             console.log(chalk.yellow("\n    Full output written to: ") + chalk.white("install.log\n"));
-            process.exit(1);
+            return;
         }
     } else {
         info(chalk, "No requirements.txt — skipping backend");
     }
 
-    // ── Frontend ──────────────────────────────────────────────
     info(chalk, "Installing frontend dependencies...");
     appendLog("\n=== frontend ===");
     try {
@@ -116,10 +100,9 @@ export default async function install(chalk) {
     } catch (err) {
         fail(chalk, `Frontend install failed: ${err.message}`);
         console.log(chalk.yellow("\n    Full output written to: ") + chalk.white("install.log\n"));
-        process.exit(1);
+        return;
     }
 
-    // ── Electron ──────────────────────────────────────────────
     info(chalk, "Installing Electron dependencies...");
     appendLog("\n=== electron ===");
     try {
@@ -128,12 +111,10 @@ export default async function install(chalk) {
     } catch (err) {
         fail(chalk, `Electron install failed: ${err.message}`);
         console.log(chalk.yellow("\n    Full output written to: ") + chalk.white("install.log\n"));
-        process.exit(1);
+        return;
     }
 
-    // ── Done ──────────────────────────────────────────────────
     cleanLog();
-
     console.log();
     console.log(chalk.gray("  ─────────────────────────────────────"));
     console.log(chalk.green("    ✔  All dependencies installed successfully!"));

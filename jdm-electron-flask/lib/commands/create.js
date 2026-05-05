@@ -1,12 +1,7 @@
-// ─────────────────────────────────────────────────────────────
-//  create.js  —  jdm-cli electron-flask create
-//  Creates a new project by cloning the three repositories.
-//  Use --install to also install dependencies (npm/pip).
-// ─────────────────────────────────────────────────────────────
 import fs from "fs";
 import path from "path";
-import readline from "readline";
 import { execSync } from "child_process";
+import { writeConfig } from "../config.js";
 
 const REPOS = {
     backend: "https://github.com/JDM-Github/jdm-electron-flask-backend",
@@ -17,8 +12,6 @@ const REPOS = {
 const CONFLICT_FOLDERS = ["backend", "frontend", "electron"];
 
 let logPath = null;
-
-// ── logging ──────────────────────────────────────────────────
 
 function appendLog(lines) {
     if (!logPath) return;
@@ -36,8 +29,6 @@ function cleanLog() {
         logPath = null;
     }
 }
-
-// ── helpers ──────────────────────────────────────────────────
 
 function ask(rl, question) {
     return new Promise((resolve) => rl.question(question, resolve));
@@ -60,8 +51,6 @@ function warn(chalk, msg) { console.log(chalk.yellow("    ⚠  ") + msg); }
 function fail(chalk, msg) { console.log(chalk.red("    ✖  ") + msg); }
 function info(chalk, msg) { console.log(chalk.gray("    ·  ") + msg); }
 
-// ── silent exec with log ──────────────────────────────────────
-
 function exec(cmd, opts = {}) {
     try {
         const result = execSync(cmd, { ...opts, stdio: "pipe" });
@@ -78,17 +67,51 @@ function exec(cmd, opts = {}) {
     }
 }
 
-// ── clone only ────────────────────────────────────────────────
+function cloneOnly(chalk, name, url, targetDir) {
+    const dir = path.join(targetDir, name);
+    fs.mkdirSync(dir, { recursive: true });
+
+    info(chalk, `Cloning ${chalk.cyan(name)}...`);
+    appendLog(`\n=== ${name} ===`);
+    exec(`git clone ${url} .`, { cwd: dir });
+
+    const gitFolder = path.join(dir, ".git");
+    if (fs.existsSync(gitFolder)) {
+        fs.rmSync(gitFolder, { recursive: true, force: true });
+        info(chalk, `Removed .git from ${chalk.cyan(name)}`);
+        appendLog(`Removed .git from ${name}`);
+    }
+
+    ok(chalk, `Cloned  ${chalk.cyan(name)}`);
+}
+
+function installDeps(chalk, name, targetDir) {
+    const dir = path.join(targetDir, name);
+    if (!fs.existsSync(dir)) return;
+
+    info(chalk, `Installing dependencies for ${chalk.cyan(name)}...`);
+    if (name === "backend") {
+        const req = path.join(dir, "requirements.txt");
+        if (fs.existsSync(req)) {
+            exec("pip install -r requirements.txt", { cwd: dir });
+            ok(chalk, "Python dependencies installed");
+        } else {
+            warn(chalk, "No requirements.txt — skipping pip install");
+        }
+    } else {
+        exec("npm install", { cwd: dir });
+        ok(chalk, "npm dependencies installed");
+    }
+}
+
 function setupEnvFiles(chalk, targetDir) {
     const pairs = [
         ["backend", ".env.example", ".env"],
         ["frontend", ".env.example", ".env"],
     ];
-
     for (const [folder, from, to] of pairs) {
         const src = path.join(targetDir, folder, from);
         const dest = path.join(targetDir, folder, to);
-
         if (fs.existsSync(src)) {
             try {
                 fs.copyFileSync(src, dest);
@@ -105,65 +128,17 @@ function setupEnvFiles(chalk, targetDir) {
 
 function createShortcutBat(targetDir) {
     const batPath = path.join(targetDir, "run.bat");
-
-    const content = `@echo off
-:: JDM Electron-Flask shortcut wrapper
-
-jdm-cli electron-flask %*
-`;
+    const content = `@echo off\n:: JDM Electron-Flask shortcut wrapper\njdm-cli electron-flask %*\n`;
     fs.writeFileSync(batPath, content, "utf8");
 }
 
-function cloneOnly(chalk, name, url, targetDir) {
-    const dir = path.join(targetDir, name);
-    fs.mkdirSync(dir, { recursive: true });
-
-    info(chalk, `Cloning ${chalk.cyan(name)}...`);
-    appendLog(`\n=== ${name} ===`);
-    exec(`git clone ${url} .`, { cwd: dir });
-    ok(chalk, `Cloned  ${chalk.cyan(name)}`);
-}
-
-// ── install dependencies (called separately) ──────────────────
-
-function installDeps(chalk, name, targetDir) {
-    const dir = path.join(targetDir, name);
-    if (!fs.existsSync(dir)) return;
-
-    info(chalk, `Installing dependencies for ${chalk.cyan(name)}...`);
-
-    if (name === "backend") {
-        const req = path.join(dir, "requirements.txt");
-        if (fs.existsSync(req)) {
-            exec("pip install -r requirements.txt", { cwd: dir });
-            ok(chalk, "Python dependencies installed");
-        } else {
-            warn(chalk, "No requirements.txt — skipping pip install");
-        }
-    } else {
-        exec("npm install", { cwd: dir });
-        ok(chalk, "npm dependencies installed");
-    }
-}
-
-// ── main (create) ─────────────────────────────────────────────
-
-export default async function create(chalk, args = []) {
+export default async function create(chalk, rl, args = []) {
     header(chalk);
 
-    // Parse --install flag
     const shouldInstall = args.includes("--install");
-
-    const rl = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout,
-    });
-
     let targetDir;
 
-    // ── Step 1: resolve target directory ─────────────────────
     step(chalk, 1, 4, "Target Directory");
-
     const answer = (await ask(rl, chalk.white("\n  Project name (or . for current folder): "))).trim();
 
     if (answer === ".") {
@@ -182,8 +157,7 @@ export default async function create(chalk, args = []) {
                 const confirm = (await ask(rl, chalk.white("  Remove them and continue? [y/N]: "))).trim().toLowerCase();
                 if (confirm !== "y") {
                     console.log(chalk.gray("\n  Aborted.\n"));
-                    rl.close();
-                    process.exit(0);
+                    return; // ← just return, never close/exit
                 }
                 for (const conflict of conflicts) {
                     fs.rmSync(path.join(targetDir, conflict), { recursive: true, force: true });
@@ -194,16 +168,14 @@ export default async function create(chalk, args = []) {
                 const confirm = (await ask(rl, chalk.white("  Continue anyway? [y/N]: "))).trim().toLowerCase();
                 if (confirm !== "y") {
                     console.log(chalk.gray("\n  Aborted.\n"));
-                    rl.close();
-                    process.exit(0);
+                    return; // ← just return
                 }
             }
         }
     } else {
         if (!answer || answer.includes("/") || answer.includes("\\")) {
             fail(chalk, "Invalid project name.");
-            rl.close();
-            process.exit(1);
+            return; // ← just return
         }
         targetDir = path.join(process.cwd(), answer);
         if (fs.existsSync(targetDir)) {
@@ -211,8 +183,7 @@ export default async function create(chalk, args = []) {
             const confirm = (await ask(rl, chalk.white("  Continue anyway? [y/N]: "))).trim().toLowerCase();
             if (confirm !== "y") {
                 console.log(chalk.gray("\n  Aborted.\n"));
-                rl.close();
-                process.exit(0);
+                return; // ← just return
             }
         } else {
             fs.mkdirSync(targetDir, { recursive: true });
@@ -220,29 +191,30 @@ export default async function create(chalk, args = []) {
         }
     }
 
-    rl.close();
+    // ── No more rl.close() here — rl belongs to the REPL ──────
     initLog(targetDir);
 
-    // ── Step 2–4: clone each repo ────────────────────────────
     const entries = Object.entries(REPOS);
     for (let i = 0; i < entries.length; i++) {
         const [name, url] = entries[i];
         step(chalk, i + 2, 4, `Installing ${name}`);
         try {
             cloneOnly(chalk, name, url, targetDir);
-            if (shouldInstall) {
-                installDeps(chalk, name, targetDir);
-            }
+            if (shouldInstall) installDeps(chalk, name, targetDir);
         } catch (err) {
             fail(chalk, `Failed to install ${chalk.cyan(name)}: ${err.message}`);
             console.log();
             console.log(chalk.yellow("    Full output written to: ") + chalk.white("install.log"));
             console.log();
-            process.exit(1);
+            throw err;
         }
     }
+
     setupEnvFiles(chalk, targetDir);
     createShortcutBat(targetDir);
+    writeConfig(targetDir);
+    info(chalk, `Created ${chalk.cyan(".jdm-config.json")}`);
+
     cleanLog();
 
     console.log();

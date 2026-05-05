@@ -4,6 +4,7 @@
 // ─────────────────────────────────────────────────────────────
 import fs from "fs";
 import path from "path";
+import { checkCompat } from "../config.js";
 
 const TARGETS = [
     { type: "dir", rel: "backend/build" },
@@ -27,6 +28,7 @@ function header(chalk) {
 
 export default async function clean(chalk) {
     header(chalk);
+    if (!checkCompat(chalk, "clean")) return;
 
     const root = process.cwd();
     let removed = 0;
