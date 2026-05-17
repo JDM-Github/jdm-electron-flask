@@ -1,39 +1,237 @@
 {
-    "name": "jdm-electron-flask",
-    "type": "module",
-    "version": "1.0.16",
-    "description": "JDM Electron + Flask plugin for jdm-cli",
-    "bin": {
-        "jdm-electron-flask": "bin/guard.js"
-    },
-    "main": "./lib/index.js",
-    "scripts": {
-        "test": "echo \"No tests yet\""
-    },
-    "dependencies": {
-        "chalk": "^5.3.0",
-        "ora": "^9.4.0",
-        "string-width": "^8.2.0",
-        "strip-ansi": "^7.2.0"
-    },
-    "keywords": [
-        "jdm",
-        "electron",
-        "flask",
-        "plugin"
-    ],
-    "author": "JDM-Github",
-    "license": "MIT",
-    "jdmPlugin": {
-        "namespace": "electron-flask",
-        "description": "Electron + Flask + React project manager",
-        "commands": [
-            "create",
-            "clean",
-            "compile",
-            "dev",
-            "prod",
-            "toexe"
+  "name": "jdm-electron-flask",
+  "type": "module",
+  "version": "1.0.18",
+  "description": "JDM Electron + Flask plugin for jdm-cli",
+  "bin": {
+    "jdm-electron-flask": "bin/guard.js"
+  },
+  "main": "./lib/index.js",
+  "scripts": {
+    "test": "echo \"No tests yet\""
+  },
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "ora": "^9.4.0",
+    "string-width": "^8.2.0",
+    "strip-ansi": "^7.2.0"
+  },
+  "keywords": [
+    "jdm",
+    "electron",
+    "flask",
+    "plugin"
+  ],
+  "author": "JDM-Github",
+  "license": "MIT",
+  "jdmPlugin": {
+    "namespace": "electron-flask",
+    "description": "Electron + Flask + React project manager",
+    "commands": [
+      {
+        "name": "create",
+        "description": "Scaffold a new Electron + Flask project",
+        "fields": [
+          {
+            "key": "name",
+            "label": "Project Name",
+            "flag": "--name",
+            "type": "text",
+            "placeholder": "my-app",
+            "required": true
+          },
+          {
+            "key": "install-all",
+            "label": "Install all Dependencies",
+            "flag": "--install-all",
+            "disable_when_active": "manual",
+            "type": "boolean",
+            "default": false
+          },
+          {
+            "key": "install-frontend",
+            "label": "Install Frontend Dependency",
+            "class": "manual",
+            "flag": "--frontend-install",
+            "type": "boolean",
+            "default": true
+          },
+          {
+            "key": "install-backend",
+            "label": "Install Backend Dependency",
+            "class": "manual",
+            "flag": "--backend-install",
+            "type": "boolean",
+            "default": false
+          },
+          {
+            "key": "install-electron",
+            "label": "Install Electron Dependency",
+            "class": "manual",
+            "flag": "--electron-install",
+            "type": "boolean",
+            "default": true
+          }
         ]
-    }
+      },
+      {
+        "name": "make",
+        "description": "Scaffold a new JDMBlueprint + Service and register it in api.json or Scaffold a new JDMEvent",
+        "fields": [
+          {
+            "key": "name",
+            "label": "API Name",
+            "flag": "--name",
+            "type": "text",
+            "placeholder": "person",
+            "required": false,
+            "description": "Name of the API (e.g., 'person' creates PersonBlueprint)"
+          },
+          {
+            "key": "radio_blueprint",
+            "label": "Activate Blueprint",
+            "radio": true,
+            "class": "switch_button",
+            "class_target": "blueprint",
+            "type": "boolean",
+            "default": true,
+            "description": "Scaffold a REST Blueprint for this API"
+          },
+          {
+            "key": "radio_socket_event",
+            "label": "Activate Socket Event",
+            "radio": true,
+            "class": "switch_button",
+            "class_target": "socket",
+            "type": "boolean",
+            "default": false,
+            "description": "Scaffold a Socket.IO event handler for this API"
+          },
+          {
+            "key": "prod",
+            "label": "Disabled on Production",
+            "class": "blueprint",
+            "flag": "--prod",
+            "type": "boolean",
+            "default": false,
+            "description": "Disable this Blueprint endpoint in the production environment"
+          },
+          {
+            "key": "deployed",
+            "label": "Disabled on Deployed",
+            "class": "blueprint",
+            "flag": "--deployed",
+            "type": "boolean",
+            "default": false,
+            "description": "Disable this Blueprint endpoint when the app is deployed"
+          }
+        ]
+      },
+      {
+        "name": "dev",
+        "description": "Start dev servers",
+        "fields": []
+      },
+      {
+        "name": "prod",
+        "description": "Build for production",
+        "fields": []
+      },
+      {
+        "name": "clean",
+        "description": "Clean build artifacts",
+        "fields": []
+      },
+      {
+        "name": "compile",
+        "description": "Compile frontend, backend, and/or electron",
+        "fields": [
+          {
+            "key": "frontend",
+            "label": "Build Frontend",
+            "class": "manual",
+            "flag": "--frontend",
+            "type": "boolean",
+            "default": false,
+            "description": "Build React frontend and copy to backend/static and electron/test"
+          },
+          {
+            "key": "backend",
+            "label": "Build Backend",
+            "class": "manual",
+            "flag": "--backend",
+            "type": "boolean",
+            "default": false,
+            "description": "Build Flask exe and copy to electron/resources and electron/test"
+          },
+          {
+            "key": "electron",
+            "label": "Build Electron",
+            "class": "manual",
+            "flag": "--electron",
+            "type": "boolean",
+            "default": false,
+            "description": "Package Electron app using current resources"
+          },
+          {
+            "key": "full",
+            "label": "Full Build",
+            "flag": "--full",
+            "disable_when_active": "manual",
+            "type": "boolean",
+            "default": false,
+            "description": "Build everything: frontend + backend + electron"
+          }
+        ]
+      },
+      {
+        "name": "install",
+        "description": "Install dependencies",
+        "fields": [
+          {
+            "key": "install-all",
+            "label": "Install all Dependencies",
+            "flag": "--install-all",
+            "disable_when_active": "manual",
+            "type": "boolean",
+            "default": true
+          },
+          {
+            "key": "install-frontend",
+            "label": "Install Frontend Dependency",
+            "class": "manual",
+            "flag": "--frontend-install",
+            "type": "boolean",
+            "default": false
+          },
+          {
+            "key": "install-backend",
+            "label": "Install Backend Dependency",
+            "class": "manual",
+            "flag": "--backend-install",
+            "type": "boolean",
+            "default": false
+          },
+          {
+            "key": "install-electron",
+            "label": "Install Electron Dependency",
+            "class": "manual",
+            "flag": "--electron-install",
+            "type": "boolean",
+            "default": false
+          }
+        ]
+      },
+      {
+        "name": "sync",
+        "description": "Sync version from config",
+        "fields": []
+      },
+      {
+        "name": "patch",
+        "description": "Bump patch version and sync",
+        "fields": []
+      }
+    ]
+  }
 }
