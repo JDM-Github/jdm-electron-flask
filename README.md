@@ -78,20 +78,35 @@ npm install -g jdm-electron-flask
 
 ## Quick Start
 
-```bash
+> **Tip:** If you're using [JDM Plugin Manager](https://github.com/JDM-Github/jdm-plugin-manager), you can install, run, and manage this plugin directly from the UI — no terminal needed for most workflows.
+
+````bash
 # 1. Scaffold a new project
 jdm-cli electron-flask create
+...
+````
 
-# 2. Install all dependencies (Python + npm)
-jdm-cli electron-flask install
+Or as a standalone callout at the end of the **Installation** section:
 
-# 3. Start the dev environment
-jdm-cli electron-flask dev
+````markdown
+## Installation
+
+Install the plugin via `jdm-cli`:
+
+```bash
+jdm-cli install electron-flask
 ```
 
-That's it. Two terminal windows (or tabs) open — one for Flask, one for Vite — and Electron connects to them automatically.
+Or install the package directly:
 
----
+```bash
+npm install -g jdm-electron-flask
+```
+
+> **Prefer a GUI?** Open **JDM Plugin Manager**, find `electron-flask` in the Available Plugins tab, and hit Install — then run any command from the plugin's runner without touching the terminal.
+````
+
+Pick whichever placement feels right. The second (end of Installation) is less intrusive since Quick Start is where people want to move fast.
 
 ## Commands
 
