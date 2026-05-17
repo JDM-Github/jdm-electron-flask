@@ -1,7 +1,7 @@
 {
   "name": "jdm-electron-flask",
   "type": "module",
-  "version": "1.0.18",
+  "version": "1.0.19",
   "description": "JDM Electron + Flask plugin for jdm-cli",
   "bin": {
     "jdm-electron-flask": "bin/guard.js"
